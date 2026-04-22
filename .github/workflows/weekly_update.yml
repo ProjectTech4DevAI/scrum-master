@@ -35,6 +35,6 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.PROJECTS_READ_TOKEN }}
-          GITHUB_ORG: ${{ secrets.GITHUB_ORG }}
-          GITHUB_PROJECT_NUMBER: ${{ secrets.GITHUB_PROJECT_NUMBER }}
+          ORG: ${{ secrets.ORG }}
+          PROJECT_NUMBER: ${{ secrets.PROJECT_NUMBER }}
           KAAPI_DISCORD_WEBHOOK: ${{ secrets.KAAPI_DISCORD_WEBHOOK }}

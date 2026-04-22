@@ -415,11 +415,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="Post GitHub Projects v2 iteration progress to Discord."
     )
-    parser.add_argument("--org", type=str, help="GitHub org (overrides GITHUB_ORG)")
+    parser.add_argument("--org", type=str, help="GitHub org (overrides ORG)")
     parser.add_argument(
         "--project-number",
         type=int,
-        help="GitHub project number (overrides GITHUB_PROJECT_NUMBER)",
+        help="GitHub project number (overrides PROJECT_NUMBER)",
     )
     parser.add_argument(
         "--webhook-url",
@@ -434,9 +434,9 @@ def main():
     args = parser.parse_args()
 
     token = os.environ.get("GITHUB_TOKEN")
-    org = args.org or os.environ.get("GITHUB_ORG")
+    org = args.org or os.environ.get("ORG")
     project_number_raw = (
-        args.project_number or os.environ.get("GITHUB_PROJECT_NUMBER")
+        args.project_number or os.environ.get("PROJECT_NUMBER")
     )
     webhook_url = args.webhook_url or os.environ.get("KAAPI_DISCORD_WEBHOOK")
 
@@ -444,11 +444,11 @@ def main():
         print("Error: GITHUB_TOKEN is not set.", file=sys.stderr)
         sys.exit(1)
     if not org:
-        print("Error: GITHUB_ORG is not set and --org not provided.", file=sys.stderr)
+        print("Error: ORG is not set and --org not provided.", file=sys.stderr)
         sys.exit(1)
     if not project_number_raw:
         print(
-            "Error: GITHUB_PROJECT_NUMBER is not set and --project-number not provided.",
+            "Error: PROJECT_NUMBER is not set and --project-number not provided.",
             file=sys.stderr,
         )
         sys.exit(1)
