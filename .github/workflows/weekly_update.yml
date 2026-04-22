@@ -2,8 +2,8 @@ name: Kaapi Weekly Update
 
 on:
   schedule:
-    # Monday 9 AM IST = Monday 3:30 AM UTC
-    - cron: "30 3 * * 1"
+    # Friday 5 PM IST = Friday 11:30 AM UTC
+    - cron: "30 11 * * 5"
   workflow_dispatch:
     inputs:
       dry_run:
