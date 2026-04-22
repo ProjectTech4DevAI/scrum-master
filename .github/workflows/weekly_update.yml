@@ -1,0 +1,40 @@
+name: Kaapi Weekly Update
+
+on:
+  schedule:
+    # Monday 9 AM IST = Monday 3:30 AM UTC
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print payload, don't post)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  post-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python kaapi_weekly_update.py --dry-run
+          else
+            python kaapi_weekly_update.py
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROJECTS_READ_TOKEN }}
+          GITHUB_ORG: ${{ secrets.GITHUB_ORG }}
+          GITHUB_PROJECT_NUMBER: ${{ secrets.GITHUB_PROJECT_NUMBER }}
+          KAAPI_DISCORD_WEBHOOK: ${{ secrets.KAAPI_DISCORD_WEBHOOK }}
