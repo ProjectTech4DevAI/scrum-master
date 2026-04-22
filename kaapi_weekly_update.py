@@ -236,7 +236,7 @@ def fetch_current_iteration(org, project_number, token):
             for a in (content.get("assignees", {}) or {}).get("nodes", [])
         ]
         identifier = (
-            f"{content['repository']['nameWithOwner']}#{content['number']}"
+            f"{content['repository']['nameWithOwner'].split('/')[-1]}#{content['number']}"
             if content.get("__typename") in ("Issue", "PullRequest")
             else "Draft"
         )
@@ -262,7 +262,7 @@ def fetch_current_iteration(org, project_number, token):
 
 # ── Discord embed builder ──────────────────────────────────────────────────
 
-TRACKED_MEMBERS = ["akhilesh", "nishika", "pragya", "prashant", "ayush"]
+TRACKED_MEMBERS = ["akhilesh", "nishika", "prajna", "prashant", "ayush"]
 
 STATE_DISPLAY_ORDER = ["Closed", "In Review", "In Progress", "To Do"]
 
@@ -276,10 +276,10 @@ STATE_NAME_MAP = {
 }
 
 STATE_ICONS = {
-    "Closed": "✅",
+    "Closed": "\U0001f7e2",
     "In Review": "\U0001f50d",
-    "In Progress": "\U0001f535",
-    "To Do": "⬜",
+    "In Progress": "\U0001f7e1",
+    "To Do": "⚪",
 }
 
 STATE_SORT_ORDER = {s: i for i, s in enumerate(STATE_DISPLAY_ORDER)}
@@ -299,17 +299,23 @@ def _matched_member(assignees):
     return None
 
 
-def _progress_bar(progress, length=20):
+def _progress_bar(progress, length=10):
     filled = round(progress * length)
     empty = length - filled
     pct = round(progress * 100)
-    return f"{'█' * filled}{'░' * empty} {pct}%"
+    if progress >= 0.70:
+        filled_char = "🟩"  # green square
+    elif progress >= 0.30:
+        filled_char = "🟨"  # yellow square
+    else:
+        filled_char = "🟥"  # red square
+    return f"{filled_char * filled}{'⬜' * empty} {pct}%"
 
 
 def _progress_color(progress):
-    if progress >= 0.75:
+    if progress >= 0.70:
         return 0x2ECC71
-    if progress >= 0.40:
+    if progress >= 0.30:
         return 0xF1C40F
     return 0xE74C3C
 
@@ -318,7 +324,21 @@ def _truncate(text, max_len=40):
     return text if len(text) <= max_len else text[: max_len - 1] + "…"
 
 
-def build_embeds(iteration_data):
+def _ordinal(day):
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{day}{suffix}"
+
+
+def _format_iteration_range(start_iso, end_iso):
+    start = datetime.strptime(start_iso, "%Y-%m-%d").date()
+    end = datetime.strptime(end_iso, "%Y-%m-%d").date()
+    return f"{_ordinal(start.day)} {start.strftime('%B')} - {_ordinal(end.day)} {end.strftime('%B')}"
+
+
+def build_messages(iteration_data):
     progress = iteration_data["progress"]
     all_items = iteration_data["items"]
 
@@ -349,10 +369,14 @@ def build_embeds(iteration_data):
         first_name = name.split("@")[0].split()[0].title()
         summary_lines.append(f"**{first_name}**: {', '.join(parts)}")
 
+    iteration_range = _format_iteration_range(
+        iteration_data["starts_at"], iteration_data["ends_at"]
+    )
+    iteration_label = f"{iteration_data['iteration_title']} ({iteration_range})"
+
     summary_embed = {
-        "title": f"Weekly Update: {iteration_data['iteration_title']} - {iteration_data['project_title']}",
+        "title": f"Weekly Update: {iteration_label} - {iteration_data['project_title']}",
         "description": (
-            f"**{iteration_data['starts_at']}** to **{iteration_data['ends_at']}**\n\n"
             f"{_progress_bar(progress)}\n\n"
             + ("\n".join(summary_lines) if summary_lines else "_No tracked-member items in this iteration._")
         ),
@@ -360,22 +384,13 @@ def build_embeds(iteration_data):
         "footer": {"text": f"{done_count}/{total_count} items closed"},
     }
 
-    member_embeds = []
+    payloads = [{"embeds": [summary_embed]}]
+
     for name in sorted(by_member.keys()):
         member_items = by_member[name]
         member_items.sort(
             key=lambda i: STATE_SORT_ORDER.get(_display_state(i["status"]), 99)
         )
-
-        lines = []
-        for i in member_items:
-            display = _display_state(i["status"])
-            icon = STATE_ICONS.get(display, "⬜")
-            lines.append(f"{icon} `{i['identifier']}` {_truncate(i['title'])}")
-
-        value = "\n".join(lines)
-        if len(value) > 4096:
-            value = value[:4092] + "\n..."
 
         first_name = name.split("@")[0].split()[0].title()
         stats = defaultdict(int)
@@ -386,25 +401,25 @@ def build_embeds(iteration_data):
             if stats.get(s):
                 subtitle_parts.append(f"{stats[s]} {s.lower()}")
 
-        member_embeds.append(
-            {
-                "title": f"{first_name} ({', '.join(subtitle_parts)})",
-                "description": value,
-                "color": _progress_color(progress),
-            }
-        )
+        lines = [f"## {first_name} ({', '.join(subtitle_parts)})"]
+        for i in member_items:
+            display = _display_state(i["status"])
+            icon = STATE_ICONS.get(display, "⚪")
+            lines.append(f"{icon} `{i['identifier']}` {i['title']}")
 
-    return [summary_embed] + member_embeds
+        content = "\n".join(lines)
+        if len(content) > 1990:
+            content = content[:1987] + "..."
+        payloads.append({"content": content})
+
+    return payloads
 
 
 # ── Discord sender ──────────────────────────────────────────────────────────
 
 
-def send_discord_embed(webhook_url, embeds, content=None):
-    data = {"embeds": embeds}
-    if content:
-        data["content"] = content
-    response = requests.post(webhook_url, json=data, timeout=10)
+def send_discord_message(webhook_url, payload):
+    response = requests.post(webhook_url, json=payload, timeout=10)
     response.raise_for_status()
 
 
@@ -476,13 +491,14 @@ def main():
         )
         sys.exit(0)
 
-    embeds = build_embeds(iteration_data)
+    payloads = build_messages(iteration_data)
 
     if args.dry_run:
-        print(json.dumps({"embeds": embeds}, indent=2))
+        print(json.dumps(payloads, indent=2))
     else:
         try:
-            send_discord_embed(webhook_url, embeds)
+            for payload in payloads:
+                send_discord_message(webhook_url, payload)
             print("Discord update posted successfully.")
         except requests.HTTPError as e:
             print(f"Error posting to Discord: {e}", file=sys.stderr)
