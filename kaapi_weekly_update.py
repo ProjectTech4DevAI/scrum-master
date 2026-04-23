@@ -349,10 +349,13 @@ def build_messages(iteration_data):
             by_member[match].append(item)
 
     tracked_items = [i for items in by_member.values() for i in items]
-    done_count = sum(
-        1 for i in tracked_items if _display_state(i["status"]) == "Closed"
+    state_totals = defaultdict(int)
+    for i in tracked_items:
+        state_totals[_display_state(i["status"])] += 1
+    totals_line = ", ".join(
+        f"{state_totals[s]} {s} {STATE_ICONS.get(s, '')}".strip()
+        for s in STATE_DISPLAY_ORDER
     )
-    total_count = len(tracked_items)
 
     summary_lines = []
     for name in sorted(by_member.keys()):
@@ -377,11 +380,11 @@ def build_messages(iteration_data):
     summary_embed = {
         "title": f"Weekly Update: {iteration_label} - {iteration_data['project_title']}",
         "description": (
-            f"{_progress_bar(progress)}\n\n"
+            f"{_progress_bar(progress)}\n"
+            f"{totals_line}\n\n"
             + ("\n".join(summary_lines) if summary_lines else "_No tracked-member items in this iteration._")
         ),
         "color": _progress_color(progress),
-        "footer": {"text": f"{done_count}/{total_count} items closed"},
     }
 
     payloads = [{"embeds": [summary_embed]}]
