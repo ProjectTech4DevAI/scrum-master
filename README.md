@@ -90,7 +90,7 @@ For the scheduled workflow, set these under **Settings → Secrets and variables
 
 ## Schedule
 
-`.github/workflows/weekly_update.yml` runs on cron `30 11 * * 5` — every Friday 11:30 UTC = **5:00 PM IST**.
+`.github/workflows/weekly_update.yml` runs on cron `30 3 * * 1,5` — every Monday and Friday at 03:30 UTC = **9:00 AM IST** (one hour before the 10 AM standup).
 
 Manual runs from the Actions tab (**Run workflow**) accept a `dry_run` input — set it to `true` to print the payload in the job logs without posting.
 

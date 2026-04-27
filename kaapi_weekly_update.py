@@ -339,7 +339,6 @@ def _format_iteration_range(start_iso, end_iso):
 
 
 def build_messages(iteration_data):
-    progress = iteration_data["progress"]
     all_items = iteration_data["items"]
 
     by_member = defaultdict(list)
@@ -356,6 +355,10 @@ def build_messages(iteration_data):
         f"{state_totals[s]} {s} {STATE_ICONS.get(s, '')}".strip()
         for s in STATE_DISPLAY_ORDER
     )
+
+    total_count = len(tracked_items)
+    closed_count = state_totals.get("Closed", 0)
+    progress = closed_count / total_count if total_count else 0.0
 
     summary_lines = []
     for name in sorted(by_member.keys()):
