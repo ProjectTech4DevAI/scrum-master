@@ -351,12 +351,14 @@ def build_messages(iteration_data):
     state_totals = defaultdict(int)
     for i in tracked_items:
         state_totals[_display_state(i["status"])] += 1
+
+    total_count = len(tracked_items)
     totals_line = ", ".join(
-        f"{state_totals[s]} {s} {STATE_ICONS.get(s, '')}".strip()
+        f"{state_totals[s]} {s} {STATE_ICONS.get(s, '')} "
+        f"({round(state_totals[s] / total_count * 100) if total_count else 0}%)".strip()
         for s in STATE_DISPLAY_ORDER
     )
 
-    total_count = len(tracked_items)
     closed_count = state_totals.get("Closed", 0)
     progress = closed_count / total_count if total_count else 0.0
 
