@@ -57,10 +57,10 @@ query ProjectMeta($org: String!, $number: Int!) {
 """
 
 PROJECT_ITEMS_QUERY = """
-query ProjectItems($org: String!, $number: Int!, $after: String) {
+query ProjectItems($org: String!, $number: Int!, $first: Int!, $after: String) {
   organization(login: $org) {
     projectV2(number: $number) {
-      items(first: 50, after: $after) {
+      items(first: $first, after: $after) {
         pageInfo {
           hasNextPage
           endCursor
@@ -115,6 +115,9 @@ query ProjectItems($org: String!, $number: Int!, $after: String) {
 }
 """
 
+class TransientGraphQLError(RuntimeError):
+    """GitHub's generic 'Something went wrong' error persisted across retries."""
+
 
 def _is_transient_graphql_error(errors):
     """GitHub returns 'Something went wrong' for internal errors/timeouts."""
@@ -150,8 +153,13 @@ def _execute_graphql(query, variables, token, max_attempts=4):
                 errors = body.get("errors")
                 if not errors:
                     return body["data"]
-                if last_attempt or not _is_transient_graphql_error(errors):
-                    raise RuntimeError(f"GitHub GraphQL errors: {errors}")
+                transient = _is_transient_graphql_error(errors)
+                if last_attempt or not transient:
+                    op = query.split("(")[0].split()[-1]
+                    error_cls = TransientGraphQLError if transient else RuntimeError
+                    raise error_cls(
+                        f"GitHub GraphQL errors in {op} (variables={variables}): {errors}"
+                    )
 
         delay = 2 ** attempt
         print(
@@ -202,15 +210,38 @@ def _find_current_iteration(project_fields, iteration_field_name="Weekly Tasks")
     return None
 
 
+ITEMS_PAGE_SIZE = 50
+
+
 def _paginate_items(org, number, token):
-    """Paginate through all items in a project (50 at a time)."""
+    """Paginate through all items in a project.
+    """
     all_items = []
     cursor = None
+    page_size = ITEMS_PAGE_SIZE
     while True:
-        variables = {"org": org, "number": number}
+        variables = {"org": org, "number": number, "first": page_size}
         if cursor:
             variables["after"] = cursor
-        data = _execute_graphql(PROJECT_ITEMS_QUERY, variables, token)
+        try:
+            # The failure is usually deterministic, so don't spend the full
+            # retry budget on large pages; save it for the 1-item fallback.
+            data = _execute_graphql(
+                PROJECT_ITEMS_QUERY,
+                variables,
+                token,
+                max_attempts=4 if page_size == 1 else 2,
+            )
+        except TransientGraphQLError:
+            if page_size == 1:
+                raise
+            page_size = max(1, page_size // 2)
+            print(
+                f"Retrying project items page with smaller page size ({page_size})...",
+                file=sys.stderr,
+            )
+            continue
+        page_size = min(ITEMS_PAGE_SIZE, page_size * 2)
         items_data = data["organization"]["projectV2"]["items"]
         all_items.extend(items_data["nodes"])
         page_info = items_data["pageInfo"]
