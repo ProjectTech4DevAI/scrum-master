@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
@@ -115,22 +116,50 @@ query ProjectItems($org: String!, $number: Int!, $after: String) {
 """
 
 
-def _execute_graphql(query, variables, token):
-    """Execute a GraphQL query against the GitHub API."""
-    response = requests.post(
-        GITHUB_API_URL,
-        json={"query": query, "variables": variables},
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-        timeout=30,
+def _is_transient_graphql_error(errors):
+    """GitHub returns 'Something went wrong' for internal errors/timeouts."""
+    return any(
+        "something went wrong" in (e.get("message") or "").lower()
+        for e in errors
     )
-    response.raise_for_status()
-    body = response.json()
-    if "errors" in body:
-        raise RuntimeError(f"GitHub GraphQL errors: {body['errors']}")
-    return body["data"]
+
+
+def _execute_graphql(query, variables, token, max_attempts=4):
+    """Execute a GraphQL query against the GitHub API, retrying transient failures."""
+    for attempt in range(1, max_attempts + 1):
+        last_attempt = attempt == max_attempts
+        try:
+            response = requests.post(
+                GITHUB_API_URL,
+                json={"query": query, "variables": variables},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30,
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            if last_attempt:
+                raise
+        else:
+            if response.status_code >= 500 and not last_attempt:
+                pass  # retry below
+            else:
+                response.raise_for_status()
+                body = response.json()
+                errors = body.get("errors")
+                if not errors:
+                    return body["data"]
+                if last_attempt or not _is_transient_graphql_error(errors):
+                    raise RuntimeError(f"GitHub GraphQL errors: {errors}")
+
+        delay = 2 ** attempt
+        print(
+            f"GitHub API transient failure (attempt {attempt}/{max_attempts}), "
+            f"retrying in {delay}s...",
+            file=sys.stderr,
+        )
+        time.sleep(delay)
 
 
 def _find_current_iteration(project_fields, iteration_field_name="Weekly Tasks"):
