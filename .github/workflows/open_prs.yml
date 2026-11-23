@@ -25,9 +25,22 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Once-a-day guard: a real (non dry-run) post saves a marker keyed by the
+      # IST date; later runs that day find it and skip posting.
+      - id: today
+        run: echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
+
+      - id: posted
+        uses: actions/cache/restore@v4
+        with:
+          path: .posted
+          key: open-prs-posted-${{ steps.today.outputs.date }}
+          lookup-only: true
+
       - run: pip install -r requirements.txt
 
-      - run: |
+      - if: steps.posted.outputs.cache-hit != 'true' || github.event.inputs.dry_run == 'true'
+        run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             python kaapi_open_prs.py --dry-run
           else
@@ -39,3 +52,12 @@ jobs:
           KAAPI_DISCORD_WEBHOOK: ${{ secrets.KAAPI_DISCORD_WEBHOOK }}
           # Role to ping, e.g. <@&123456789012345678>; leave unset for no ping
           DISCORD_MENTION: ${{ vars.DISCORD_MENTION }}
+
+      - if: steps.posted.outputs.cache-hit != 'true' && github.event.inputs.dry_run != 'true'
+        run: date > .posted
+
+      - if: steps.posted.outputs.cache-hit != 'true' && github.event.inputs.dry_run != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .posted
+          key: open-prs-posted-${{ steps.today.outputs.date }}
