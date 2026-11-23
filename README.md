@@ -1,6 +1,6 @@
 # scrum-master
 
-Posts a weekly iteration update from a GitHub Projects v2 board to Discord. Runs every Friday 5 PM IST via GitHub Actions, with a manual dry-run option.
+Posts a weekly iteration update from a GitHub Projects v2 board to Discord. Runs every day at 8 AM IST via GitHub Actions, with a manual dry-run option.
 
 ## What it does
 
@@ -90,7 +90,7 @@ For the scheduled workflow, set these under **Settings → Secrets and variables
 
 ## Schedule
 
-`.github/workflows/weekly_update.yml` runs on cron `30 3 * * 1,5` — every Monday and Friday at 03:30 UTC = **9:00 AM IST** (one hour before the 10 AM standup).
+`.github/workflows/weekly_update.yml` runs on cron `30 2 * * *` — every day at 02:30 UTC = **8:00 AM IST**.
 
 Manual runs from the Actions tab (**Run workflow**) accept a `dry_run` input — set it to `true` to print the payload in the job logs without posting.
 
