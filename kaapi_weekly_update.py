@@ -20,6 +20,10 @@ load_dotenv()
 
 GITHUB_API_URL = "https://api.github.com/graphql"
 
+BOT_NAME = "Scrum Master"
+# Twemoji "clipboard" (CC-BY 4.0)
+AVATAR_URL = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1f4cb.png"
+
 # ── GitHub GraphQL ──────────────────────────────────────────────────────────
 
 PROJECT_META_QUERY = """
@@ -71,6 +75,8 @@ query ProjectItems($org: String!, $number: Int!, $first: Int!, $after: String) {
             __typename
             ... on Issue {
               number
+              state
+              labels(first: 20) { nodes { name } }
               title
               url
               repository { nameWithOwner }
@@ -78,6 +84,8 @@ query ProjectItems($org: String!, $number: Int!, $first: Int!, $after: String) {
             }
             ... on PullRequest {
               number
+              state
+              labels(first: 20) { nodes { name } }
               title
               url
               repository { nameWithOwner }
@@ -566,7 +574,10 @@ def main():
     else:
         try:
             for payload in payloads:
-                send_discord_message(webhook_url, payload)
+                send_discord_message(
+                    webhook_url,
+                    {**payload, "username": BOT_NAME, "avatar_url": AVATAR_URL},
+                )
             print("Discord update posted successfully.")
         except requests.HTTPError as e:
             print(f"Error posting to Discord: {e}", file=sys.stderr)

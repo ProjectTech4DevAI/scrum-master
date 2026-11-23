@@ -17,6 +17,8 @@ from kaapi_weekly_update import _execute_graphql, send_discord_message
 REPOS = ["kaapi-backend", "kaapi-frontend", "kaapi-guardrails"]
 BOT_NAME = "Kaapi Barista"  # overrides the webhook's default name for this flow
 COFFEE_BROWN = 0x6F4E37  # embed sidebar color
+# Twemoji "hot beverage" (CC-BY 4.0)
+AVATAR_URL = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/2615.png"
 
 # ponytail: single page of 100; paginate if the team ever has >100 open PRs
 OPEN_PRS_QUERY = """
@@ -65,7 +67,7 @@ def build_messages(prs, now=None, mention=None):
     for p in prs:
         p["days"] = (now - datetime.fromisoformat(p["createdAt"].replace("Z", "+00:00"))).days
     icons = [_age_icon(p["days"]) for p in prs]
-    lines = [f"# ☕ Open PRs ({len(prs)})"]
+    lines = [f"# Open PRs ({len(prs)})"]
     if prs:
         lines.append(" · ".join(f"{i} {icons.count(i)}" for i in AGE_ICONS))
     for repo in REPOS:
@@ -86,6 +88,14 @@ def build_messages(prs, now=None, mention=None):
     if not prs:
         lines.append("_No open PRs._ \U0001f389")
 
+    messages = embed_messages(lines, BOT_NAME, COFFEE_BROWN, LEGEND, mention)
+    for m in messages:
+        m["avatar_url"] = AVATAR_URL
+    return messages
+
+
+def embed_messages(lines, username, color, footer, mention=None):
+    """Pack lines into Discord embed payloads (shared with kaapi_iteration)."""
     # Embeds (needed for the color bar) cap a description at 4096 chars;
     # pack whole lines into chunks.
     payloads, chunk = [], ""
@@ -98,10 +108,10 @@ def build_messages(prs, now=None, mention=None):
             chunk = f"{chunk}\n{line}" if chunk else line
     payloads.append(chunk)
     messages = [
-        {"username": BOT_NAME, "embeds": [{"description": c, "color": COFFEE_BROWN}]}
+        {"username": username, "embeds": [{"description": c, "color": color}]}
         for c in payloads
     ]
-    messages[-1]["embeds"][0]["footer"] = {"text": LEGEND}
+    messages[-1]["embeds"][0]["footer"] = {"text": footer}
     if mention:
         # Mentions only ping from message content, never from inside an embed.
         messages[0]["content"] = mention
