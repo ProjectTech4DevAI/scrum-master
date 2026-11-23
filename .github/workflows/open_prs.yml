@@ -1,0 +1,41 @@
+name: Kaapi Open PRs
+
+on:
+  schedule:
+    # Same slot as the weekly update (Mon & Fri)
+    - cron: "30 0 * * 1,5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print payload, don't post)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  post-open-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python kaapi_open_prs.py --dry-run
+          else
+            python kaapi_open_prs.py
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROJECTS_READ_TOKEN }}
+          ORG: ${{ secrets.ORG }}
+          KAAPI_DISCORD_WEBHOOK: ${{ secrets.KAAPI_DISCORD_WEBHOOK }}
+          # Role to ping, e.g. <@&123456789012345678>; leave unset for no ping
+          DISCORD_MENTION: ${{ vars.DISCORD_MENTION }}
