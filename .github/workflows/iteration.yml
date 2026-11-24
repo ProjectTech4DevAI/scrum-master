@@ -1,0 +1,74 @@
+name: Kaapi Iteration Rollover & Reminder
+
+on:
+  schedule:
+    # Every day 8:00 AM IST = 2:30 AM UTC
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print only: no board changes, no post)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  iteration:
+    runs-on: ubuntu-latest
+    env:
+      ORG: ${{ secrets.ORG }}
+      PROJECT_NUMBER: ${{ secrets.PROJECT_NUMBER }}
+      DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      # Moves unfinished items of the last ended iteration into the current one
+      # and labels them carry-over. Idempotent: a no-op once nothing is left
+      # behind, so it runs daily and catches up if a run was missed.
+      - name: Carry over unfinished items
+        run: python kaapi_iteration.py rollover $DRY_RUN
+        env:
+          # Needs project write + issues/PR write; dry runs work with the read token
+          GITHUB_TOKEN: ${{ secrets.PROJECTS_WRITE_TOKEN || secrets.PROJECTS_READ_TOKEN }}
+
+      # Once-a-day guard: a real (non dry-run) post saves a marker keyed by the
+      # IST date; later runs that day find it and skip posting.
+      - id: today
+        if: ${{ !cancelled() }}
+        run: echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
+
+      - id: posted
+        if: ${{ !cancelled() }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .posted
+          key: iteration-reminder-posted-${{ steps.today.outputs.date }}
+          lookup-only: true
+
+      # Still posts when the rollover step failed; the job stays red.
+      - name: Post carry-over / P0 / P1 reminder
+        if: ${{ !cancelled() && (steps.posted.outputs.cache-hit != 'true' || github.event.inputs.dry_run == 'true') }}
+        run: python kaapi_iteration.py remind $DRY_RUN
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROJECTS_READ_TOKEN }}
+          KAAPI_DISCORD_WEBHOOK: ${{ secrets.KAAPI_DISCORD_WEBHOOK }}
+          # Role to ping, e.g. <@&123456789012345678>; leave unset for no ping
+          DISCORD_MENTION: ${{ vars.DISCORD_MENTION }}
+
+      - if: ${{ success() && steps.posted.outputs.cache-hit != 'true' && github.event.inputs.dry_run != 'true' }}
+        run: date > .posted
+
+      - if: ${{ success() && steps.posted.outputs.cache-hit != 'true' && github.event.inputs.dry_run != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .posted
+          key: iteration-reminder-posted-${{ steps.today.outputs.date }}
