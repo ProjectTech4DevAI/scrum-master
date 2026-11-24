@@ -38,7 +38,7 @@ YELLOW = 0xF2B632
 AVATAR_URL = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1fad7.png"
 LEGEND = (
     "\U0001f525 P0 · ♨️ P1 · \U0001f501 carried over · "
-    "\U0001f7e1 in progress · \U0001f50d in review · ⚪ to do · ⏸️ paused · Nh = estimate"
+    "\U0001f7e1 in progress · \U0001f50d in review · ⚪ to do"
 )
 
 MOVE_MUTATION = """
