@@ -105,6 +105,12 @@ query ProjectItems($org: String!, $number: Int!, $first: Int!, $after: String) {
                   ... on ProjectV2SingleSelectField { name }
                 }
               }
+              ... on ProjectV2ItemFieldNumberValue {
+                number
+                field {
+                  ... on ProjectV2Field { name }
+                }
+              }
               ... on ProjectV2ItemFieldIterationValue {
                 title
                 startDate

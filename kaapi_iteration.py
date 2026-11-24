@@ -20,6 +20,8 @@ import requests
 from kaapi_open_prs import embed_messages
 from kaapi_weekly_update import (
     PROJECT_META_QUERY,
+    STATE_ICONS,
+    _display_state,
     _execute_graphql,
     _find_current_iteration,
     _paginate_items,
@@ -34,7 +36,10 @@ NAVY = 0x1F3B73
 YELLOW = 0xF2B632
 # Twemoji "pouring liquid" (CC-BY 4.0)
 AVATAR_URL = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1fad7.png"
-LEGEND = "\U0001f525 P0 · ♨️ P1 · \U0001f501 carried over from last iteration"
+LEGEND = (
+    "\U0001f525 P0 · ♨️ P1 · \U0001f501 carried over · "
+    "\U0001f7e1 in progress · \U0001f50d in review · ⚪ to do · ⏸️ paused · Nh = estimate"
+)
 
 MOVE_MUTATION = """
 mutation MoveItem($project: ID!, $item: ID!, $field: ID!, $iteration: String!) {
@@ -52,6 +57,9 @@ def _item(raw):
     for v in raw["fieldValues"]["nodes"]:
         if v.get("__typename") == "ProjectV2ItemFieldIterationValue":
             fields["iteration"] = v["iterationId"]
+        elif v.get("__typename") == "ProjectV2ItemFieldNumberValue":
+            if ((v.get("field") or {}).get("name") or "").lower().startswith("estimate"):
+                fields["estimate"] = v.get("number")
         elif v.get("name"):
             fields[((v.get("field") or {}).get("name") or "").lower()] = v["name"]
     status = fields.get("status") or "No status"
@@ -65,6 +73,7 @@ def _item(raw):
         "url": content.get("url"),
         "status": status,
         "priority": fields.get("priority"),
+        "estimate": fields.get("estimate"),  # hours, None when not set
         "iteration": fields.get("iteration"),
         "done": status.lower() in ("closed", "done")
         or content.get("state") in ("CLOSED", "MERGED"),
@@ -151,6 +160,15 @@ def _icon(item):
     return heat + ("\U0001f501" if item["carried"] else "")
 
 
+def _hours(n):
+    return f" · {n:g}h" if n else ""
+
+
+def _status_icon(status):
+    # Pending / on hold and anything else unknown read as paused
+    return {**STATE_ICONS, "No status": "⚪"}.get(_display_state(status), "⏸️")
+
+
 def build_reminder(board, mention=None):
     current = board["current"]
     picked = sorted(
@@ -179,10 +197,11 @@ def build_reminder(board, mention=None):
     ]
     for person in sorted({a for i in picked for a in i["assignees"]}):
         mine = [i for i in picked if person in i["assignees"]]
-        lines.append(f"## {person} ({len(mine)})")
+        total = sum(i["estimate"] or 0 for i in mine)
+        lines.append(f"## {person} ({len(mine)}{_hours(total)})")
         for i in mine:
             ref = f"[`{i['ref']}`](<{i['url']}>)" if i["url"] else f"`{i['ref']}`"
-            lines.append(f"{_icon(i)} {ref} {i['title']} — *{i['status']}*")
+            lines.append(f"{_icon(i)} {ref} {i['title']}{_hours(i['estimate'])} {_status_icon(i['status'])}")
     if not picked:
         lines.append("_Nothing left brewing. Sip slow._ ☕")
     # Yellow (the logo's dot) for the final stretch of the iteration.
@@ -202,6 +221,7 @@ def _self_check():
         return {
             "id": f"I{n}", "repo": "o/kaapi-backend", "number": n, "ref": f"kaapi-backend#{n}",
             "title": f"t{n}", "url": f"https://x/{n}", "status": status, "priority": priority,
+            "estimate": {3: 4.0, 6: 2.5}.get(n),
             "iteration": iteration, "done": status == "Closed", "carried": carried,
             "assignees": [who],
         }  # fmt: skip
@@ -230,7 +250,11 @@ def _self_check():
     assert build_reminder(board, "<@&1>")[0]["content"] == "<@&1>" and "content" not in messages[0]
     assert "6 days left" in text and "\U0001f525 1 P0 · ♨️ 1 P1 · \U0001f501 1 carried" in text
     assert text.index("#3`") < text.index("#6`"), "priority before plain carry-over"
-    assert text.index("## amy (1)") < text.index("## dev (2)"), "grouped by assignee"
+    assert text.index("## amy (1)") < text.index("## dev (2 · 6.5h)"), "grouped by assignee"
+    assert "t3 · 4h ⚪" in text and "t4 ⚪" in text, "estimate only when set, status icon last"
+    assert [_status_icon(s) for s in ("In Progress", "In Review", "on hold", "No status")] == [
+        "\U0001f7e1", "\U0001f50d", "⏸️", "⚪"
+    ]  # fmt: skip
     assert messages[0]["embeds"][0]["color"] == NAVY and messages[0]["username"] == BOT_NAME
     board["current"]["days_elapsed"] = 14
     last = build_reminder(board)[0]["embeds"][0]
@@ -248,12 +272,14 @@ def _self_check():
         "fieldValues": {"nodes": [
             {"__typename": "ProjectV2ItemFieldSingleSelectValue", "name": "P0", "field": {"name": "Priority"}},
             {"__typename": "ProjectV2ItemFieldIterationValue", "iterationId": "cur"},
+            {"__typename": "ProjectV2ItemFieldNumberValue", "number": 3.0, "field": {"name": "Estimate(Hrs)"}},
             {"__typename": "ProjectV2ItemFieldTextValue"},
         ]},
     }  # fmt: skip
     parsed = _item(raw)
     assert (parsed["ref"], parsed["priority"], parsed["iteration"], parsed["carried"], parsed["done"]) == ("r#9", "P0", "cur", True, False)
     assert parsed["assignees"] == ["Amy"] and parsed["status"] == "No status"
+    assert parsed["estimate"] == 3.0
     raw["content"]["state"] = "CLOSED"
     assert _item(raw)["done"]
     print("self-check ok")
