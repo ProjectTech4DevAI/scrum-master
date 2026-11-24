@@ -487,7 +487,8 @@ def build_messages(iteration_data):
         for i in member_items:
             display = _display_state(i["status"])
             icon = STATE_ICONS.get(display, "⚪")
-            lines.append(f"{icon} `{i['identifier']}` {i['title']}")
+            ref = f"[`{i['identifier']}`](<{i['url']}>)" if i["url"] else f"`{i['identifier']}`"
+            lines.append(f"{icon} {ref} {i['title']}")
 
         content = "\n".join(lines)
         if len(content) > 1990:
