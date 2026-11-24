@@ -1,0 +1,63 @@
+name: Kaapi Open PRs
+
+on:
+  schedule:
+    # Every day 8:00 AM IST = 2:30 AM UTC
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print payload, don't post)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  post-open-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Once-a-day guard: a real (non dry-run) post saves a marker keyed by the
+      # IST date; later runs that day find it and skip posting.
+      - id: today
+        run: echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
+
+      - id: posted
+        uses: actions/cache/restore@v4
+        with:
+          path: .posted
+          key: open-prs-posted-${{ steps.today.outputs.date }}
+          lookup-only: true
+
+      - run: pip install -r requirements.txt
+
+      - if: steps.posted.outputs.cache-hit != 'true' || github.event.inputs.dry_run == 'true'
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python kaapi_open_prs.py --dry-run
+          else
+            python kaapi_open_prs.py
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROJECTS_READ_TOKEN }}
+          ORG: ${{ secrets.ORG }}
+          KAAPI_DISCORD_WEBHOOK: ${{ secrets.KAAPI_DISCORD_WEBHOOK }}
+          # Role to ping, e.g. <@&123456789012345678>; leave unset for no ping
+          DISCORD_MENTION: ${{ vars.DISCORD_MENTION }}
+
+      - if: steps.posted.outputs.cache-hit != 'true' && github.event.inputs.dry_run != 'true'
+        run: date > .posted
+
+      - if: steps.posted.outputs.cache-hit != 'true' && github.event.inputs.dry_run != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .posted
+          key: open-prs-posted-${{ steps.today.outputs.date }}
