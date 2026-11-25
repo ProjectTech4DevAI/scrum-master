@@ -17,7 +17,7 @@ import sys
 
 import requests
 
-from kaapi_open_prs import embed_messages
+from kaapi_open_prs import COFFEE_BROWN, embed_messages
 from kaapi_weekly_update import (
     PROJECT_META_QUERY,
     STATE_ICONS,
@@ -31,8 +31,7 @@ from kaapi_weekly_update import (
 CARRY_LABEL = "carry-over"
 URGENT = ("P0", "P1")
 BOT_NAME = "Kaapi Brewmaster"  # watches what is still brewing
-# Kaapi logo colors: navy wordmark, yellow dot
-NAVY = 0x1F3B73
+# Kaapi logo's yellow dot
 YELLOW = 0xF2B632
 # Twemoji "pouring liquid" (CC-BY 4.0)
 AVATAR_URL = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1fad7.png"
@@ -160,8 +159,9 @@ def _icon(item):
     return heat + ("\U0001f501" if item["carried"] else "")
 
 
-def _hours(n):
-    return f" · {n:g}h" if n else ""
+def _hours(n, bold=False):
+    mark = "**" * bold
+    return f" · {mark}{n:g}h{mark}" if n else ""
 
 
 def _status_icon(status):
@@ -201,13 +201,16 @@ def build_reminder(board, mention=None):
         lines.append(f"## {person} ({len(mine)}{_hours(total)})")
         for i in mine:
             ref = f"[`{i['ref']}`](<{i['url']}>)" if i["url"] else f"`{i['ref']}`"
-            lines.append(f"{_icon(i)} {ref} {i['title']}{_hours(i['estimate'])} {_status_icon(i['status'])}")
+            lines.append(f"{_icon(i)} {ref} {i['title']}{_hours(i['estimate'], bold=True)} {_status_icon(i['status'])}")
     if not picked:
-        lines.append("_Nothing left brewing. Sip slow._ ☕")
+        # Nothing to list: header, counts and legend would all be noise.
+        lines = ["_Sold out! New batch brews next iteration._ ☕"]
     # Yellow (the logo's dot) for the final stretch of the iteration.
     messages = embed_messages(
-        lines, BOT_NAME, YELLOW if days_left <= 2 else NAVY, LEGEND, mention
+        lines, BOT_NAME, YELLOW if days_left <= 2 else COFFEE_BROWN, LEGEND, mention
     )
+    if not picked:
+        del messages[-1]["embeds"][0]["footer"]
     for m in messages:
         m["avatar_url"] = AVATAR_URL
     return messages
@@ -251,16 +254,17 @@ def _self_check():
     assert "6 days left" in text and "\U0001f525 1 P0 · ♨️ 1 P1 · \U0001f501 1 carried" in text
     assert text.index("#3`") < text.index("#6`"), "priority before plain carry-over"
     assert text.index("## amy (1)") < text.index("## dev (2 · 6.5h)"), "grouped by assignee"
-    assert "t3 · 4h ⚪" in text and "t4 ⚪" in text, "estimate only when set, status icon last"
+    assert "t3 · **4h** ⚪" in text and "t4 ⚪" in text, "estimate only when set, status icon last"
     assert [_status_icon(s) for s in ("In Progress", "In Review", "on hold", "No status")] == [
         "\U0001f7e1", "\U0001f50d", "⏸️", "⚪"
     ]  # fmt: skip
-    assert messages[0]["embeds"][0]["color"] == NAVY and messages[0]["username"] == BOT_NAME
+    assert messages[0]["embeds"][0]["color"] == COFFEE_BROWN and messages[0]["username"] == BOT_NAME
     board["current"]["days_elapsed"] = 14
     last = build_reminder(board)[0]["embeds"][0]
     assert last["color"] == YELLOW and "last day" in last["description"]
     board["items"] = []
-    assert "Nothing left brewing" in build_reminder(board)[0]["embeds"][0]["description"]
+    empty = build_reminder(board)[0]["embeds"][0]
+    assert empty["description"].startswith("_Sold out!") and "footer" not in empty, "bare message when all done"
     raw = {
         "id": "X",
         "content": {
